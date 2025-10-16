@@ -1,4 +1,4 @@
-# renv::install(c('polyglotr', 'dplyr', 'stringr', 'tcltk', 'purrr'))
+# renv::install(c('polyglotr', 'dplyr', 'stringr', 'tcltk', 'purrr', 'furrr'))
 
 ### To-Do
 # Add error detection/handling
@@ -10,7 +10,8 @@ library(polyglotr) # Language detection & translation
 library(dplyr) # Data wrangling
 library(stringr) # String manipulation
 library(tcltk) # File/folder selection
-library(purrr) # TBD
+library(purrr) # Vectorized functions
+library(furrr) # Parallel processing
 
 print('Select CSV to translate...')
 filepath <- tk_choose.files(caption = 'Select the CSV file you want to import')
@@ -20,8 +21,10 @@ filename <- basename(filepath) %>%
   str_remove('.csv') %>% 
   stringr::str_replace_all(' ', '_')
 
-df_to_translate <- read.csv(filepath)
+df_to_translate <- read.csv(filepath) %>% 
+  dplyr::distinct(body, .keep_all = TRUE)
 
+### For small-scale testing
 # df_test <- df_to_translate %>%
 #   dplyr::filter(language != 'English') %>%
 #   dplyr::slice_sample(., n = 15)
@@ -29,20 +32,22 @@ df_to_translate <- read.csv(filepath)
 # Function to translate text from dataframe
 
 translate_df_text <- function(col_w_text, col_w_language) {
-  if (col_w_language != 'English') {
-    tryCatch(
+  if (col_w_language != 'English' && col_w_text != "") {
+    translated_text <- tryCatch(
       {
-        translated_text <- stringr::str_squish(polyglotr::google_translate(
-          as.character(col_w_text),
+        result <- stringr::str_squish(polyglotr::google_translate(
+          as.character(gsub("[^\x20-\x7E]", "", col_w_text)), # Remove characters that might cause issues with API
           target_language = 'en'
         )) %>%
           iconv(., "UTF-8", "ASCII", sub = "")
 
         print(paste0(str_sub(col_w_text, 1L, 100L)))
-        Sys.sleep(1)
+        # Sys.sleep(1)
+
+        return(result)
       },
       error = function(e) {
-        message(e)
+        message("Translation error: ", e$message)
         return(NA)
       }
     )
@@ -53,25 +58,49 @@ translate_df_text <- function(col_w_text, col_w_language) {
 }
 
 print('Translating file...')
+
+# Parralel processing
+plan(multisession, workers = 6)
+
 elapsed_time <- system.time(
-  translated_df <- df_to_translate %>%
-    dplyr::rowwise() %>%
-    dplyr::mutate(
-      translation = translate_df_text(body, language), # These colomns of interest are currently hard-coded
-      Date = as.Date(substr(date, 1, 10))
-    ) %>%
-    dplyr::select(
-      Dataset = dataset,
-      Source = source,
-      Date,
-      Language = language,
-      Translation = translation,
-      Link = url
-    ),
+  translations <- future_map2(
+    df_to_translate$body,
+    df_to_translate$language,
+    translate_df_text,
+    .progress = TRUE,
+    .options = furrr_options(seed = TRUE)
+  ),
   gcFirst = TRUE
 )
 
-print(paste0('Successfully translated ', nrow(translated_df), ' records in ', round(elapsed_time['elapsed'] / 60, digits = 3), ' minutes'))
+translated_df <- df_to_translate
+translated_df$Translation <- unlist(translations)
+
+
+
+print(paste0('Successfully translated ', nrow(translated_df), ' records in ', round(elapsed_time['elapsed'] / 60, digits = 3), ' minutes. That comes to ', round(elapsed_time['elapsed'] / 244, digits = 3), ' seconds per record.'))
+
+
+# # Sequential processing
+# elapsed_time <- system.time(
+#   translated_df <- df_to_translate %>%
+#     dplyr::rowwise() %>%
+#     dplyr::mutate(
+#       translation = translate_df_text(body, language), # These colomns of interest are currently hard-coded
+#       Date = as.Date(substr(date, 1, 10))
+#     ) %>%
+#     dplyr::select(
+#       Dataset = dataset,
+#       Source = source,
+#       Date,
+#       Language = language,
+#       Translation = translation,
+#       Link = url
+#     ),
+#   gcFirst = TRUE
+# )
+
+# print(paste0('Successfully translated ', nrow(translated_df), ' records in ', round(elapsed_time['elapsed'] / 60, digits = 3), ' minutes'))
 
 print('Select output destination...')
 write.csv(translated_df, paste0(tk_choose.dir(caption = 'Select the folder where you want to store your translated CSV'), '/', filename, '_translated.csv'), row.names = FALSE)
