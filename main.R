@@ -17,26 +17,38 @@ filepath <- tk_choose.files(caption = 'Select the CSV file you want to import')
 
 print('Reading in CSV file...')
 filename <- basename(filepath) %>% 
-  str_remove('.csv')
+  str_remove('.csv') %>% 
+  stringr::str_replace_all(' ', '_')
 
 df_to_translate <- read.csv(filepath)
 
-# df_test <- df_to_translate %>% 
-#   dplyr::filter(language != 'English') %>% 
+# df_test <- df_to_translate %>%
+#   dplyr::filter(language != 'English') %>%
 #   dplyr::slice_sample(., n = 15)
 
 # Function to translate text from dataframe
+
 translate_df_text <- function(col_w_text, col_w_language) {
   if (col_w_language != 'English') {
-    translated_text <- stringr::str_squish(polyglotr::google_translate(
-      as.character(col_w_text),
-      target_language = 'en'
-    )) %>% 
-      iconv(., "UTF-8", "ASCII", sub = "")
+    tryCatch(
+      {
+        translated_text <- stringr::str_squish(polyglotr::google_translate(
+          as.character(col_w_text),
+          target_language = 'en'
+        )) %>%
+          iconv(., "UTF-8", "ASCII", sub = "")
+
+        print(paste0(str_sub(col_w_text, 1L, 100L)))
+        Sys.sleep(1)
+      },
+      error = function(e) {
+        message(e)
+        return(NA)
+      }
+    )
   } else {
     translated_text <- stringr::str_squish(col_w_text)
   }
-
   return(translated_text)
 }
 
