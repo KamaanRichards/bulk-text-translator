@@ -18,10 +18,12 @@ filepath <- tk_choose.files(caption = 'Select the CSV file you want to import')
 print('Reading in CSV file...')
 filename <- basename(filepath) %>% 
   str_remove('.csv')
+
 df_to_translate <- read.csv(filepath)
-df_test <- df_to_translate %>% 
-  dplyr::filter(language != 'English') %>% 
-  dplyr::slice_sample(., n = 15)
+
+# df_test <- df_to_translate %>% 
+#   dplyr::filter(language != 'English') %>% 
+#   dplyr::slice_sample(., n = 15)
 
 # Function to translate text from dataframe
 translate_df_text <- function(col_w_text, col_w_language) {
@@ -39,22 +41,27 @@ translate_df_text <- function(col_w_text, col_w_language) {
 }
 
 print('Translating file...')
-translated_df <- df_test %>%
-  dplyr::rowwise() %>%
-  dplyr::mutate(
-    translation = translate_df_text(body, language), # These colomns of interest are currently hard-coded
-    Date = as.Date(substr(date, 1, 10))
-  ) %>%
-  dplyr::select(
-    Dataset = dataset,
-    Source = source,
-    Date,
-    Language = language,
-    Translation = translation,
-    Link = url
-  )
+elapsed_time <- system.time(
+  translated_df <- df_to_translate %>%
+    dplyr::rowwise() %>%
+    dplyr::mutate(
+      translation = translate_df_text(body, language), # These colomns of interest are currently hard-coded
+      Date = as.Date(substr(date, 1, 10))
+    ) %>%
+    dplyr::select(
+      Dataset = dataset,
+      Source = source,
+      Date,
+      Language = language,
+      Translation = translation,
+      Link = url
+    ),
+  gcFirst = TRUE
+)
 
-print('Select destination...')
+print(paste0('Successfully translated ', nrow(translated_df), ' records in ', round(elapsed_time['elapsed'] / 60, digits = 3), ' minutes'))
+
+print('Select output destination...')
 write.csv(translated_df, paste0(tk_choose.dir(caption = 'Select the folder where you want to store your translated CSV'), '/', filename, '_translated.csv'), row.names = FALSE)
 
 print('Translation successful!')
