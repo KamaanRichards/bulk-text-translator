@@ -1,4 +1,4 @@
-# Project Title
+# Bulk Text Translator
 
 Bulk translate text segements stored in tabular format.
 
