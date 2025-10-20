@@ -24,6 +24,14 @@ filename <- basename(filepath) %>%
 df_to_translate <- read.csv(filepath) %>% 
   dplyr::distinct(body, .keep_all = TRUE)
 
+
+if (nrow(df_to_translate) > 3000) {
+  df_to_translate <- df_to_translate %>% 
+    dplyr::slice_sample(n = 1000, replace = FALSE)
+} else {
+  df_to_translate <- df_to_translate
+}
+
 ### For small-scale testing
 # df_test <- df_to_translate %>%
 #   dplyr::filter(language != 'English') %>%
