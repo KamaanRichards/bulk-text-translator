@@ -2,7 +2,7 @@
 
 ### To-Do
 # Add error detection/handling
-# Enable command line arguments for target columns
+# Enable pointing to directory and bulk read & translation of csv files
 
 renv::restore()
 
@@ -37,10 +37,18 @@ if (nrow(df_to_translate) > 3000) {
 #   dplyr::filter(language != 'English') %>%
 #   dplyr::slice_sample(., n = 15)
 
-# Function to translate text from dataframe
-
-translate_df_text <- function(col_w_text, col_w_language) {
-  if (col_w_language != 'English' && col_w_text != "") {
+translate_df_text <- function(col_w_text, col_w_language = NULL) {
+  print(col_w_text)
+  
+  # If language is not provided, assume it needs translation (non-English)
+  # You can change this default behavior as needed
+  should_translate <- if (is.null(col_w_language)) {
+    TRUE  # Default: assume non-English and translate
+  } else {
+    col_w_language != 'English'
+  }
+  
+  if (should_translate && col_w_text != "") {
     translated_text <- tryCatch(
       {
         result <- stringr::str_squish(polyglotr::google_translate(
@@ -70,16 +78,42 @@ print('Translating file...')
 # Parralel processing
 plan(multisession, workers = 6)
 
+
+# Check if language column exists and has data
 elapsed_time <- system.time(
-  translations <- future_map2(
-    df_to_translate$body,
-    df_to_translate$language,
-    translate_df_text,
-    .progress = TRUE,
-    .options = furrr_options(seed = TRUE)
-  ),
-  gcFirst = TRUE
+  if (
+    "language" %in%
+      colnames(df_to_translate) &&
+      length(df_to_translate$language) > 0
+  ) {
+    # Use future_map2 when language data is available
+    translations <- future_map2(
+      df_to_translate$body,
+      df_to_translate$language,
+      translate_df_text,
+      .progress = TRUE,
+      .options = furrr_options(seed = TRUE)
+    )
+  } else {
+    # Use future_map when no language data
+    translations <- future_map(
+      df_to_translate$body,
+      translate_df_text,
+      .progress = TRUE,
+      .options = furrr_options(seed = TRUE)
+    )
+  }
 )
+
+# elapsed_time <- system.time(
+#   translations <- future_map(
+#     df_to_translate$body,
+#     translate_df_text,
+#     .progress = TRUE,
+#     .options = furrr_options(seed = TRUE)
+#   ),
+#   gcFirst = TRUE
+# )
 
 translated_df <- df_to_translate
 translated_df$Translation <- unlist(translations)
@@ -88,30 +122,8 @@ translated_df$Translation <- unlist(translations)
 
 print(paste0('Successfully translated ', nrow(translated_df), ' records in ', round(elapsed_time['elapsed'] / 60, digits = 3), ' minutes. That comes to ', round(elapsed_time['elapsed'] / 244, digits = 3), ' seconds per record.'))
 
-
-# # Sequential processing
-# elapsed_time <- system.time(
-#   translated_df <- df_to_translate %>%
-#     dplyr::rowwise() %>%
-#     dplyr::mutate(
-#       translation = translate_df_text(body, language), # These colomns of interest are currently hard-coded
-#       Date = as.Date(substr(date, 1, 10))
-#     ) %>%
-#     dplyr::select(
-#       Dataset = dataset,
-#       Source = source,
-#       Date,
-#       Language = language,
-#       Translation = translation,
-#       Link = url
-#     ),
-#   gcFirst = TRUE
-# )
-
-# print(paste0('Successfully translated ', nrow(translated_df), ' records in ', round(elapsed_time['elapsed'] / 60, digits = 3), ' minutes'))
-
 print('Select output destination...')
 write.csv(translated_df, paste0(tk_choose.dir(caption = 'Select the folder where you want to store your translated CSV'), '/', filename, '_translated.csv'), row.names = FALSE)
 
 print('Translation successful!')
-Sys.sleep(5)
+  Sys.sleep(5)
