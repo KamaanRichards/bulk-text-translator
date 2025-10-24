@@ -27,7 +27,7 @@ df_to_translate <- read.csv(filepath) %>%
 
 if (nrow(df_to_translate) > 3000) {
   df_to_translate <- df_to_translate %>% 
-    dplyr::slice_sample(n = 1000, replace = FALSE)
+    dplyr::slice_sample(n = 3000, replace = FALSE)
 } else {
   df_to_translate <- df_to_translate
 }
@@ -105,25 +105,17 @@ elapsed_time <- system.time(
   }
 )
 
-# elapsed_time <- system.time(
-#   translations <- future_map(
-#     df_to_translate$body,
-#     translate_df_text,
-#     .progress = TRUE,
-#     .options = furrr_options(seed = TRUE)
-#   ),
-#   gcFirst = TRUE
-# )
-
+# Create final dataset by combining original dataframe with translations object
 translated_df <- df_to_translate
 translated_df$Translation <- unlist(translations)
 
-
-
+# Admin/timing print
 print(paste0('Successfully translated ', nrow(translated_df), ' records in ', round(elapsed_time['elapsed'] / 60, digits = 3), ' minutes. That comes to ', round(elapsed_time['elapsed'] / 244, digits = 3), ' seconds per record.'))
 
+# Write to disk
 print('Select output destination...')
 write.csv(translated_df, paste0(tk_choose.dir(caption = 'Select the folder where you want to store your translated CSV'), '/', filename, '_translated.csv'), row.names = FALSE)
 
+# Admin print (for console use)
 print('Translation successful!')
   Sys.sleep(5)
